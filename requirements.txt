@@ -1,8 +1,8 @@
 # Core packages
-langchain>=0.1.16
-langchain-openai>=0.1.1
-langchain-community>=0.0.32
-langchain-anthropic>=0.1.11
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-community>=0.3.0
+langchain-anthropic>=0.2.0
 
 # Vector store
 faiss-cpu>=1.7.4
@@ -31,7 +31,11 @@ reportlab>=4.0.4
 
 # Local embeddings (fallback) - используем совместимые версии
 sentence-transformers>=2.2.2
-torch>=2.1.0
+# PyTorch с поддержкой CUDA 12.1 (для вашей RTX 4060 Ti). Уточните версию CUDA, если нужно.
+# Если pip не найдет точную версию, он установит ближайшую совместимую.
+torch>=2.1.0+cu121
+torchvision>=0.16.0+cu121
+torchaudio>=2.1.0+cu121
 
 # Database
 psycopg2-binary>=2.9.9
@@ -39,3 +43,15 @@ sqlalchemy>=2.0.23
 
 # Testing
 pytest>=8.1.1
+
+# Audio & Video processing (совместимые с Python 3.13)
+moviepy>=2.0.0
+openai-whisper>=20231107
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+
+# Для лучшей совместимости
+numpy>=1.21.0
+
+# (Опционально) Для будущего обновления HuggingFaceEmbeddings
+# langchain-huggingface>=0.1.0

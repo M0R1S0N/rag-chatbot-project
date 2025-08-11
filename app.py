@@ -1,4 +1,5 @@
 # app.py
+import torch
 import gradio as gr
 import os
 import json
@@ -11,10 +12,34 @@ from src.export_handler import export_chat_to_pdf, export_chat_to_json
 from src.database import db_manager
 from config.settings import settings
 import logging
+import tempfile
+import whisper
+from moviepy.video.io.VideoFileClip import VideoFileClip
+
+# Проверка наличия FFmpeg
+try:
+    import subprocess
+    subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+    print("✅ FFmpeg найден в системе")
+except (subprocess.CalledProcessError, FileNotFoundError):
+    print("⚠️  FFmpeg не найден в системе")
+    print("Пожалуйста, установите FFmpeg вручную:")
+    print("   - Скачайте с https://www.gyan.dev/ffmpeg/builds/")
+    print("   - Выберите 'release essentials' сборку")
+    print("   - Распакуйте в C:\\ffmpeg")
+    print("   - Добавьте C:\\ffmpeg\\bin в переменные среды PATH")
+
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Проверка доступности CUDA для PyTorch
+if torch.cuda.is_available():
+    logger.info(f"PyTorch: Используется устройство: {torch.cuda.get_device_name(0)}")
+    logger.info(f"PyTorch: Количество доступных GPU: {torch.cuda.device_count()}")
+else:
+    logger.info("PyTorch: CUDA не доступна, используется CPU")
 
 # Глобальные переменные
 vectorstore = None
@@ -24,6 +49,108 @@ chat_history = []  # Формат: [(role, content), ...]
 current_user_id = None
 current_session_id = None
 
+def extract_audio_from_video(video_path):
+    """Извлекает аудио из видео файла"""
+    try:
+        audio_path = video_path.replace('.mp4', '.mp3').replace('.mov', '.mp3')
+        clip = VideoFileClip(video_path)
+        # Убираем устаревшие параметры
+        clip.audio.write_audiofile(audio_path, logger=None)
+        return audio_path
+    except Exception as e:
+        logger.error(f"Ошибка при извлечении аудио: {str(e)}")
+        return None
+
+def transcribe_audio(audio_path):
+    """Преобразует аудио в текст с помощью Whisper"""
+    try:
+        # Определение устройства (GPU или CPU)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda":
+            print(f"Whisper: Используется устройство: {torch.cuda.get_device_name(0)}")
+        else:
+            print("Whisper: CUDA не доступна, используется CPU")
+
+        model = whisper.load_model("base").to(device) # Перемещаем модель на устройство
+        result = model.transcribe(audio_path)
+        return result["text"]
+    except Exception as e:
+        logger.error(f"Ошибка при преобразовании аудио: {str(e)}")
+        return None
+
+def process_media_file(file_obj):
+    """Обрабатывает медиа файл и возвращает текст"""
+    temp_path = None
+    audio_path = None
+    try:
+        logger.info(f"Начало обработки медиа файла: {getattr(file_obj, 'name', 'unknown')}")
+        
+        # Создаем временный файл
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_obj.name)[1]) as tmp_file:
+            # Получаем содержимое файла
+            if hasattr(file_obj, 'read'):
+                logger.info("Чтение файла через read()")
+                file_obj.seek(0)
+                file_content = file_obj.read()
+            else:
+                # Для NamedString читаем файл напрямую
+                if hasattr(file_obj, 'name') and os.path.exists(file_obj.name):
+                    logger.info("Чтение файла напрямую по пути")
+                    with open(file_obj.name, 'rb') as f:
+                        file_content = f.read()
+                else:
+                    logger.info("Преобразование содержимого в строку")
+                    file_content = str(file_obj).encode('utf-8')
+            
+            tmp_file.write(file_content)
+            temp_path = tmp_file.name
+            logger.info(f"Временный файл создан: {temp_path}")
+
+        file_extension = os.path.splitext(file_obj.name)[1].lower()
+        logger.info(f"Расширение файла: {file_extension}")
+        
+        if file_extension in ['.mp3', '.wav']:
+            # Аудио файл
+            logger.info("Обработка аудио файла")
+            text = transcribe_audio(temp_path)
+            if text:
+                logger.info(f"Аудио успешно транскрибировано, длина текста: {len(text)}")
+            else:
+                logger.warning("Транскрибирование аудио не дало результата")
+        elif file_extension in ['.mp4', '.mov']:
+            # Видео файл
+            logger.info("Обработка видео файла")
+            audio_path = extract_audio_from_video(temp_path)
+            if audio_path and os.path.exists(audio_path):
+                logger.info(f"Аудио извлечено: {audio_path}")
+                text = transcribe_audio(audio_path)
+                if text:
+                    logger.info(f"Видео успешно транскрибировано, длина текста: {len(text)}")
+                else:
+                    logger.warning("Транскрибирование видео не дало результата")
+            else:
+                logger.error("Не удалось извлечь аудио из видео")
+                text = None
+        else:
+            logger.warning(f"Неподдерживаемый формат медиа файла: {file_extension}")
+            text = None
+            
+        return text
+    except Exception as e:
+        logger.error(f"Ошибка при обработке медиа файла {getattr(file_obj, 'name', 'unknown')}: {str(e)}", exc_info=True)
+        return None
+    finally:
+        # Очищаем временные файлы
+        try:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+                logger.info(f"Удален временный файл: {temp_path}")
+            if audio_path and os.path.exists(audio_path):
+                os.unlink(audio_path)
+                logger.info(f"Удален временный аудио файл: {audio_path}")
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временные файлы: {e}")
+    
 def try_load_vectorstore():
     """Пробует загрузить векторное хранилище с диска при старте"""
     global vectorstore
@@ -144,26 +271,80 @@ def process_documents(files):
         if not files:
             return "❌ Не выбраны файлы для загрузки!"
         
-        # Получаем пути к файлам
-        file_paths = [f.name for f in files]
+        logger.info(f"Получено файлов для обработки: {len(files)}")
         
-        # Загружаем все документы
-        documents = load_multiple_documents(file_paths)
+        all_documents = []
+        media_texts = []  # Для хранения текстов из медиа файлов
         
-        if not documents:
-            return "❌ Не удалось загрузить ни один документ!"
+        for i, file_obj in enumerate(files):
+            try:
+                logger.info(f"Обработка файла {i+1}/{len(files)}: {file_obj.name}")
+                file_extension = os.path.splitext(file_obj.name)[1].lower()
+                logger.info(f"Расширение файла: {file_extension}")
+                
+                # Обработка текстовых документов
+                if file_extension in ['.txt', '.pdf', '.docx', '.html', '.md']:
+                    logger.info(f"Загрузка текстового документа: {file_obj.name}")
+                    documents = load_multiple_documents([file_obj.name])
+                    if documents:
+                        logger.info(f"Загружено {len(documents)} документов из {file_obj.name}")
+                        all_documents.extend(documents)
+                    else:
+                        logger.warning(f"Не удалось загрузить документы из {file_obj.name}")
+                
+                # Обработка медиа файлов
+                elif file_extension in ['.mp3', '.wav', '.mp4', '.mov']:
+                    logger.info(f"Обработка медиа файла: {file_obj.name}")
+                    text = process_media_file(file_obj)
+                    if text:
+                        logger.info(f"Извлечено {len(text)} символов из {file_obj.name}")
+                        # Создаем кортеж (текст, имя_файла) для последующей обработки
+                        media_texts.append((text, file_obj.name))
+                    else:
+                        logger.warning(f"Не удалось извлечь текст из {file_obj.name}")
+                else:
+                    logger.warning(f"Неподдерживаемый формат файла: {file_extension}")
+            
+            except Exception as e:
+                logger.error(f"Ошибка при обработке файла {file_obj.name}: {str(e)}")
+                continue
         
-        # Разделяем на чанки
-        texts = split_documents(documents)
+        logger.info(f"Всего текстовых документов: {len(all_documents)}")
+        logger.info(f"Всего медиа текстов: {len(media_texts)}")
+        
+        # Загружаем текстовые документы
+        if all_documents:
+            texts = split_documents(all_documents)
+            logger.info(f"Разделено текстовые документы на {len(texts)} чанков")
+        else:
+            texts = []
+        
+        # Обрабатываем медиа тексты
+        for text, source_name in media_texts:
+            try:
+                from src.document_processor import create_document_from_text
+                doc = create_document_from_text(text, source_name)
+                doc_texts = split_documents([doc])
+                texts.extend(doc_texts)
+                logger.info(f"Обработан медиа текст из {source_name}, добавлено {len(doc_texts)} чанков")
+            except Exception as e:
+                logger.error(f"Ошибка при обработке медиа текста из {source_name}: {str(e)}")
+        
+        if not texts:
+            logger.error("Не удалось обработать ни один файл - нет текстов для векторизации")
+            return "❌ Не удалось обработать ни один файл!"
         
         # Создаем векторное хранилище
+        logger.info("Создание векторного хранилища...")
         vectorstore = create_vectorstore(texts)
         save_vectorstore(vectorstore)
+        logger.info("Векторное хранилище создано и сохранено")
         
-        return f"✅ Обработано {len(files)} файлов. Всего документов: {len(documents)}, чанков: {len(texts)}"
+        total_files = len([f for f in files if os.path.splitext(f.name)[1].lower() in ['.txt', '.pdf', '.docx', '.html', '.md']]) + len(media_texts)
+        return f"✅ Обработано {total_files} файлов. Всего чанков: {len(texts)}"
     except Exception as e:
         error_msg = f"❌ Ошибка: {str(e)}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)  # Добавляем трассировку стека
         return error_msg
 
 def initialize_chat(model_name_key):
@@ -333,7 +514,11 @@ with gr.Blocks(title="RAG Chatbot Advanced") as demo:
         load_session_btn.click(load_session, inputs=sessions_dropdown, outputs=[chatbot, session_load_status])
 
     with gr.Tab("3. Загрузка документов"):
-        file_input = gr.File(label="Загрузить документы (PDF/TXT/DOCX/HTML/MD)", file_count="multiple")
+        file_input = gr.File(
+        label="Загрузить документы (PDF/TXT/DOCX/HTML/MD/MP3/WAV/MP4/MOV)", 
+        file_count="multiple",
+        file_types=[".txt", ".pdf", ".docx", ".html", ".md", ".mp3", ".wav", ".mp4", ".mov"]
+        )
         process_btn = gr.Button("Обработать документы")
         status1 = gr.Textbox(label="Статус", interactive=False)
         process_btn.click(process_documents, inputs=file_input, outputs=status1)

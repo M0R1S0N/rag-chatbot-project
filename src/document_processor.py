@@ -1,5 +1,7 @@
 import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+
 from langchain_community.document_loaders import (
     PyPDFLoader, 
     TextLoader,
@@ -41,7 +43,7 @@ def load_document(file_path: str) -> List:
             loader = TextLoader(file_path, encoding='utf-8')
         
         documents = loader.load()    
-    # Добавляем метаданные к каждому документу
+        # Добавляем метаданные к каждому документу
         for doc in documents:
             doc.metadata["source_file"] = os.path.basename(file_path)
             doc.metadata["file_type"] = file_path.split('.')[-1].upper()
@@ -56,10 +58,24 @@ def load_multiple_documents(file_paths: List[str]) -> List:
     all_documents = []
     for file_path in file_paths:
         try:
-            documents = load_document(file_path)
-            all_documents.extend(documents)
+            logger.info(f"Загрузка документа: {file_path}")
+            # Проверяем, является ли файл медиа (уже обработанным текстом)
+            if isinstance(file_path, tuple) and len(file_path) == 2:
+                # Это кортеж (текст, имя_файла) от медиа обработки
+                text, source_name = file_path
+                doc = create_document_from_text(text, source_name)
+                all_documents.append(doc)
+                logger.info(f"Добавлен документ из медиа: {source_name}")
+            else:
+                # Обычный файловый путь
+                if os.path.exists(file_path):
+                    documents = load_document(file_path)
+                    all_documents.extend(documents)
+                    logger.info(f"Загружено {len(documents)} документов из {file_path}")
+                else:
+                    logger.error(f"Файл не найден: {file_path}")
         except Exception as e:
-            logger.error(f"Ошибка при загрузке файла {file_path}: {e}")
+            logger.error(f"Ошибка при загрузке файла {file_path}: {e}", exc_info=True)
             # Продолжаем загрузку остальных файлов
             continue
     logger.info(f"Всего загружено документов: {len(all_documents)}")
@@ -78,3 +94,13 @@ def split_documents(documents: List, chunk_size: int = 1000, chunk_overlap: int 
     except Exception as e:
         logger.error(f"Ошибка разделения документов: {e}")
         raise
+
+def create_document_from_text(text: str, source_name: str) -> Document:
+    """Создает документ из текста с метаданными"""
+    return Document(
+        page_content=text,
+        metadata={
+            "source_file": source_name,
+            "file_type": "MEDIA"
+        }
+    )
