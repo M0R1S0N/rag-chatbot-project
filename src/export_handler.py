@@ -1,4 +1,4 @@
-# Импорты, необходимые для работы с PDF
+# src/export_handler.py
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer

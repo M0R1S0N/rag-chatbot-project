@@ -7,7 +7,7 @@ from src.document_processor import load_multiple_documents, split_documents
 from src.vector_store import create_vectorstore, save_vectorstore, load_vectorstore
 from src.chat_chain import create_rag_chain, format_sources
 from src.llm_handler import get_llm, get_available_models
-from src.export_handler import export_chat_to_pdf, export_chat_to_json  # <-- Добавлен импорт
+from src.export_handler import export_chat_to_pdf, export_chat_to_json
 from config.settings import settings
 import logging
 
@@ -110,23 +110,43 @@ def clear_chat():
     chat_history = []
     return []
 
-# Функции экспорта с правильной передачей аргументов
-def export_chat_json_wrapper():
-    """Обертка для экспорта чата в JSON"""
+# Функции экспорта с выбором директории
+def export_chat_json_wrapper(export_dir=""):
+    """Обертка для экспорта чата в JSON с выбором директории"""
     global chat_history, current_model
     try:
-        result = export_chat_to_json(chat_history, current_model)
+        # Создаем имя файла
+        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Если указана директория и она существует, сохраняем там
+        if export_dir and os.path.exists(export_dir):
+            filename = os.path.join(export_dir, f"{filename_base}.json")
+        else:
+            # Иначе сохраняем в текущую директорию
+            filename = f"{filename_base}.json"
+        
+        result = export_chat_to_json(chat_history, current_model, filename)
         return result
     except Exception as e:
         error_msg = f"❌ Ошибка экспорта: {str(e)}"
         logger.error(error_msg)
         return error_msg
 
-def export_chat_pdf_wrapper():
-    """Обертка для экспорта чата в PDF"""
+def export_chat_pdf_wrapper(export_dir=""):
+    """Обертка для экспорта чата в PDF с выбором директории"""
     global chat_history, current_model
     try:
-        result = export_chat_to_pdf(chat_history, current_model)
+        # Создаем имя файла
+        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Если указана директория и она существует, сохраняем там
+        if export_dir and os.path.exists(export_dir):
+            filename = os.path.join(export_dir, f"{filename_base}.pdf")
+        else:
+            # Иначе сохраняем в текущую директорию
+            filename = f"{filename_base}.pdf"
+        
+        result = export_chat_to_pdf(chat_history, current_model, filename)
         return result
     except Exception as e:
         error_msg = f"❌ Ошибка экспорта: {str(e)}"
@@ -171,10 +191,15 @@ with gr.Blocks(title="RAG Chatbot Advanced") as demo:
                     )
                     clear_btn = gr.Button("Очистить", scale=1)
                 
-                # Кнопки экспорта
+                # Кнопки экспорта с выбором директории
                 with gr.Row():
-                    export_json_btn = gr.Button("Экспорт в JSON")
-                    export_pdf_btn = gr.Button("Экспорт в PDF")
+                    export_dir = gr.Textbox(
+                        label="Директория для экспорта (опционально)", 
+                        placeholder="Оставьте пустым для сохранения в текущую папку",
+                        scale=6
+                    )
+                    export_json_btn = gr.Button("Экспорт в JSON", scale=2)
+                    export_pdf_btn = gr.Button("Экспорт в PDF", scale=2)
                     export_status = gr.Textbox(label="Статус экспорта")
                 
             with gr.Column(scale=1):
@@ -182,9 +207,17 @@ with gr.Blocks(title="RAG Chatbot Advanced") as demo:
         
         msg.submit(chat, [msg, chatbot], [msg, chatbot, sources_output])
         clear_btn.click(clear_chat, None, chatbot)
-        # Используем обертки для правильной передачи аргументов
-        export_json_btn.click(export_chat_json_wrapper, outputs=export_status)
-        export_pdf_btn.click(export_chat_pdf_wrapper, outputs=export_status)
+        # Используем обертки с передачей директории
+        export_json_btn.click(
+            export_chat_json_wrapper, 
+            inputs=export_dir,
+            outputs=export_status
+        )
+        export_pdf_btn.click(
+            export_chat_pdf_wrapper, 
+            inputs=export_dir,
+            outputs=export_status
+        )
 
 if __name__ == "__main__":
     demo.launch()
