@@ -1,37 +1,41 @@
 # Core packages
-langchain==0.1.16
-langchain-openai==0.1.1
-langchain-community==0.0.32
-langchain-anthropic==0.1.11
+langchain>=0.1.16
+langchain-openai>=0.1.1
+langchain-community>=0.0.32
+langchain-anthropic>=0.1.11
 
 # Vector store
-faiss-cpu==1.7.4
+faiss-cpu>=1.7.4
 
 # Web interface
-gradio==4.21.0
+gradio>=4.21.0
 
 # Document processing
-pypdf==4.1.0
-docx2txt==0.8
-unstructured==0.10.10
-markdown==3.4.1
+pypdf>=4.1.0
+docx2txt>=0.8
+unstructured>=0.10.10
+markdown>=3.4.1
 
 # Configuration
-python-dotenv==1.0.1
+python-dotenv>=1.0.1
 
 # API clients
-openai==1.14.3
-anthropic==0.21.3
+openai>=1.14.3
+anthropic>=0.21.3
 
 # Token counting
-tiktoken==0.6.0
+tiktoken>=0.6.0
 
 # PDF Export
-reportlab==4.0.4
+reportlab>=4.0.4
 
-# Local embeddings (fallback)
-sentence-transformers==2.2.2
-torch==2.1.0
+# Local embeddings (fallback) - используем совместимые версии
+sentence-transformers>=2.2.2
+torch>=2.1.0
+
+# Database
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.23
 
 # Testing
-pytest==8.1.1
+pytest>=8.1.1
