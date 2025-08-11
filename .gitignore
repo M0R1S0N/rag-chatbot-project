@@ -1,0 +1,26 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Логи и данные
+logs/
+data/
+*.log
+
+# Системные файлы
+__pycache__/
+*.pyc
+
+# Конфигурационные файлы с секретами
+.env
+config/.env
+.env.local
+
+# Временные файлы Gradio
+/tmp/
+/temp/
