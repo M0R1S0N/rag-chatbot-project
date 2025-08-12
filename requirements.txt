@@ -40,6 +40,7 @@ torchaudio>=2.1.0+cu121
 # Database
 psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.23
+bcrypt>=4.0.1
 
 # Testing
 pytest>=8.1.1
@@ -52,6 +53,7 @@ imageio-ffmpeg>=0.4.9
 
 # Для лучшей совместимости
 numpy>=1.21.0
+
 
 # (Опционально) Для будущего обновления HuggingFaceEmbeddings
 # langchain-huggingface>=0.1.0

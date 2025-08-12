@@ -49,6 +49,31 @@ chat_history = []  # Формат: [(role, content), ...]
 current_user_id = None
 current_session_id = None
 
+def register_user(username, password):
+    """Регистрация нового пользователя"""
+    global current_user_id
+    try:
+        if not username or not password:
+            return "", "", "❌ Введите имя пользователя и пароль"
+
+        # Пытаемся зарегистрировать пользователя через database.py
+        success = db_manager.register_user(username, password)
+        
+        if success:
+            # После успешной регистрации можно автоматически залогинить пользователя
+            # или просто сообщить об успехе и перейти на вкладку входа.
+            # Здесь мы просто сообщим об успехе.
+             # Очищаем поля ввода и показываем сообщение
+            return "", "", "✅ Регистрация успешна! Теперь вы можете войти."
+        else:
+             # Это сообщение будет, если пользователь уже существует
+             return "", "", "❌ Пользователь с таким именем уже существует"
+    except Exception as e:
+         # Обрабатываем другие возможные ошибки
+        error_msg = f"❌ Ошибка регистрации: {str(e)}"
+        logger.error(error_msg)
+        return "", "", error_msg
+
 def extract_audio_from_video(video_path):
     """Извлекает аудио из видео файла"""
     try:
@@ -175,20 +200,32 @@ def initialize_database():
         logger.error(error_msg)
         return error_msg
 
-def login_user(username):
-    """Вход пользователя"""
+def login_user(username, password): # <-- Обновлены параметры
+    """Вход пользователя с проверкой пароля"""
     global current_user_id
     try:
-        if not username:
-            return "", "❌ Введите имя пользователя"
-        
-        user_id = db_manager.create_user(username)
-        current_user_id = user_id
-        return "", f"✅ Добро пожаловать, {username}!"
+        if not username or not password: # <-- Проверка обоих полей
+            # Очищаем поля и показываем сообщение
+            return "", "", "❌ Введите имя пользователя и пароль" 
+
+        # Проверяем имя и пароль в БД (новая функция в database.py)
+        if db_manager.verify_user_password(username, password):
+            # Если верно, получаем ID пользователя (или обновляем last_active через create_user)
+            # Лучше использовать get_user_id и отдельно обновлять last_active, 
+            # но create_user с ON CONFLICT тоже работает
+            user_id = db_manager.create_user(username, password) # create_user теперь обновляет last_active и хэш (если передан)
+            current_user_id = user_id
+             # Очищаем поля и показываем сообщение
+            return "", "", f"✅ Добро пожаловать, {username}!" 
+        else:
+            # Очищаем поля и показываем сообщение об ошибке
+            return "", "", "❌ Неверное имя пользователя или пароль" 
+            
     except Exception as e:
         error_msg = f"❌ Ошибка входа: {str(e)}"
         logger.error(error_msg)
-        return "", error_msg
+        # Очищаем поля и показываем сообщение об ошибке
+        return "", "", error_msg 
 
 def create_new_session(session_name):
     """Создание новой сессии"""
@@ -489,11 +526,37 @@ with gr.Blocks(title="RAG Chatbot Advanced") as demo:
     chatbot = gr.Chatbot(label="Диалог", height=500)
     sources_output = gr.Markdown(label="Источники", height=500)
     
-    with gr.Tab("1. Авторизация"):
-        username_input = gr.Textbox(label="Имя пользователя", placeholder="Введите ваше имя")
+    # Обновленная вкладка Авторизации/Регистрации
+    # Изменено: with gr.Tab("1. Авторизация"): -> with gr.Tab("1. Вход/Регистрация"):
+    with gr.Tab("1. Вход/Регистрация"): 
+        # Вход
+        gr.Markdown("### Вход")
+        login_username_input = gr.Textbox(label="Имя пользователя (вход)", placeholder="Введите ваше имя")
+        login_password_input = gr.Textbox(label="Пароль (вход)", placeholder="Введите ваш пароль", type="password")
         login_btn = gr.Button("Войти")
-        login_status = gr.Textbox(label="Статус", interactive=False)
-        login_btn.click(login_user, inputs=username_input, outputs=[username_input, login_status])
+        login_status = gr.Textbox(label="Статус входа", interactive=False)
+        
+        # Регистрация
+        gr.Markdown("### Регистрация")
+        register_username_input = gr.Textbox(label="Имя пользователя (регистрация)", placeholder="Выберите имя пользователя")
+        register_password_input = gr.Textbox(label="Пароль (регистрация)", placeholder="Выберите пароль", type="password")
+        register_btn = gr.Button("Зарегистрироваться")
+        register_status = gr.Textbox(label="Статус регистрации", interactive=False)
+        
+        # Обработчики событий
+        # Обновлено: login_btn.click для использования новых полей и функции login_user
+        login_btn.click(
+            login_user, 
+            inputs=[login_username_input, login_password_input], # <-- Обновлены входы
+            outputs=[login_username_input, login_password_input, login_status] # <-- Обновлены выходы
+        )
+        
+        # Новый: register_btn.click
+        register_btn.click(
+            register_user,
+            inputs=[register_username_input, register_password_input],
+            outputs=[register_username_input, register_password_input, register_status]
+        )
 
     with gr.Tab("2. Сессии"):
         sessions_dropdown = gr.Dropdown(label="Выберите сессию", choices=[], interactive=True)

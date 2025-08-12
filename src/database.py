@@ -1,5 +1,6 @@
 # src/database.py
 import os
+import bcrypt # <-- Убедитесь, что bcrypt импортирован
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
@@ -63,19 +64,61 @@ class DatabaseManager:
             logger.error(f"Ошибка инициализации базы данных: {e}")
             raise
     
-    def create_user(self, username: str) -> int:
-        """Создание нового пользователя"""
+    # Метод register_user должен быть внутри класса
+    def register_user(self, username: str, password: str) -> bool:
+        """Регистрация нового пользователя с паролем"""
         try:
-            # Очищаем имя пользователя от проблемных символов
+            if not username or not password:
+                # logger.info("Попытка регистрации без имени пользователя или пароля") # Лучше логировать *после* очистки
+                return False # Возвращаем False, а не исключение
+
             cleaned_username = username.encode('utf-8', errors='ignore').decode('utf-8')
             
+            # Проверим, существует ли пользователь с таким именем
+            existing_user_id = self.get_user_id(cleaned_username)
+            if existing_user_id is not None:
+                logger.info(f"Попытка регистрации существующего пользователя: {cleaned_username}")
+                return False # Или выбросить исключение
+
+            # Хэшируем пароль
+            password_bytes = password.encode('utf-8')
+            hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
+
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     conn.set_client_encoding('UTF8')
                     cursor.execute("SET client_encoding = 'UTF8'")
+                    # Вставляем нового пользователя с хэшем пароля
                     cursor.execute(
-                        "INSERT INTO users (username) VALUES (%s) ON CONFLICT (username) DO UPDATE SET last_active = CURRENT_TIMESTAMP RETURNING id",
-                        (cleaned_username,)
+                        "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+                        (cleaned_username, hashed)
+                    )
+                    conn.commit()
+                    logger.info(f"Пользователь {cleaned_username} зарегистрирован")
+                    return True
+        except Exception as e:
+            logger.error(f"Ошибка регистрации пользователя {username}: {e}")
+            # Передаем ошибку выше, чтобы обработать в app.py
+            # Но для согласованности лучше возвращать False или True
+            return False # Или raise e, если хотите, чтобы исключение поднималось
+
+    def create_user(self, username: str, password: str) -> int:
+        """Создание нового пользователя с паролем"""
+        try:
+            cleaned_username = username.encode('utf-8', errors='ignore').decode('utf-8')
+            
+            # Хэшируем пароль
+            password_bytes = password.encode('utf-8') if isinstance(password, str) else password
+            hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
+
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    conn.set_client_encoding('UTF8')
+                    cursor.execute("SET client_encoding = 'UTF8'")
+                    # Обновляем или вставляем пользователя, сохраняя хэш пароля
+                    cursor.execute(
+                        "INSERT INTO users (username, password_hash) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash, last_active = CURRENT_TIMESTAMP RETURNING id",
+                        (cleaned_username, hashed) # <-- Передаем хэш
                     )
                     user_id = cursor.fetchone()[0]
                     conn.commit()
@@ -84,6 +127,29 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Ошибка создания пользователя {username}: {e}")
             raise
+
+    def verify_user_password(self, username: str, password: str) -> bool:
+        """Проверка имени пользователя и пароля"""
+        try:
+            cleaned_username = username.encode('utf-8', errors='ignore').decode('utf-8')
+            password_bytes = password.encode('utf-8') if isinstance(password, str) else password
+
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    conn.set_client_encoding('UTF8')
+                    cursor.execute("SET client_encoding = 'UTF8'")
+                    cursor.execute("SELECT password_hash FROM users WHERE username = %s", (cleaned_username,))
+                    result = cursor.fetchone()
+                    
+                    if result and result[0]: # Проверяем, что хэш существует
+                        stored_hash = result[0].encode('utf-8') # bcrypt требует bytes
+                        return bcrypt.checkpw(password_bytes, stored_hash)
+                    else:
+                        # Пользователь не найден или пароль не установлен
+                        return False
+        except Exception as e:
+            logger.error(f"Ошибка проверки пароля для пользователя {username}: {e}")
+            return False
     
     def get_user_id(self, username: str) -> Optional[int]:
         """Получение ID пользователя по имени"""
