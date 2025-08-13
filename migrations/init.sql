@@ -1,5 +1,4 @@
 -- migrations/init.sql
--- Создание таблиц для пользователей и диалогов
 
 -- Таблица пользователей
 CREATE TABLE IF NOT EXISTS users (
@@ -10,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица сессий диалогов
+-- Таблица сессий диалога
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -19,7 +18,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица сообщений
+-- Таблица сообщений чата
 CREATE TABLE IF NOT EXISTS chat_messages (
     id SERIAL PRIMARY KEY,
     session_id INTEGER REFERENCES chat_sessions(id) ON DELETE CASCADE,
@@ -40,11 +39,11 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 -- Триггер для автоматического обновления времени сессии
 DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON chat_sessions;
 CREATE TRIGGER update_chat_sessions_updated_at 
-    BEFORE UPDATE ON chat_sessions 
-    FOR EACH ROW 
-    EXECUTE FUNCTION update_chat_session_timestamp();
+BEFORE UPDATE ON chat_sessions 
+FOR EACH ROW 
+EXECUTE FUNCTION update_chat_session_timestamp();

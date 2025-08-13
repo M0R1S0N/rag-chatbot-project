@@ -13,14 +13,20 @@ import logging
 # Настройка логгера
 logger = logging.getLogger(__name__)
 
-def export_chat_to_pdf(chat_history, model_name, filename=None):
+def export_chat_to_pdf(chat_history, model_name, filename=None, export_dir=None):
     """Экспорт истории чата в PDF с поддержкой кириллицы"""
     try:
         if not filename:
             filename = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        
+
+        # Если указана директория экспорта и она существует
+        # Создаем полный путь к файлу
+        full_filepath = filename
+        if export_dir and os.path.exists(export_dir):
+            full_filepath = os.path.join(export_dir, filename)
+
         # Создаем PDF документ
-        doc = SimpleDocTemplate(filename, pagesize=A4, 
+        doc = SimpleDocTemplate(full_filepath, pagesize=A4, 
                                leftMargin=50, rightMargin=50, 
                                topMargin=50, bottomMargin=50)
         
@@ -149,31 +155,39 @@ def export_chat_to_pdf(chat_history, model_name, filename=None):
         
         # Сохраняем PDF
         doc.build(story)
-        logger.info(f"Чат экспортирован в PDF: {filename}")
-        return f"✅ Чат экспортирован в {filename}"
+        logger.info(f"Чат экспортирован в PDF: {full_filepath}")
+        return f"✅ Чат экспортирован в {full_filepath}"
     
     except Exception as e:
         error_msg = f"❌ Ошибка экспорта в PDF: {str(e)}"
         logger.error(error_msg)
         return error_msg
 
-def export_chat_to_json(chat_history, model_name, filename=None):
+def export_chat_to_json(chat_history, model_name, filename=None, export_dir=None):
     """Экспорт истории чата в JSON"""
     try:
         if not filename:
             filename = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
+
+        # Создаем данные для экспорта
         export_data = {
             "model": model_name or "Не выбрана",
             "timestamp": datetime.now().isoformat(),
             "chat_history": chat_history
         }
-        
-        with open(filename, 'w', encoding='utf-8') as f:
+
+        # Если указана директория экспорта и она существует
+        # Создаем полный путь к файлу
+        full_filepath = filename
+        if export_dir and os.path.exists(export_dir):
+            full_filepath = os.path.join(export_dir, filename)
+
+        # Сохраняем JSON
+        with open(full_filepath, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"Чат экспортирован в JSON: {filename}")
-        return f"✅ Чат экспортирован в {filename}"
+        logger.info(f"Чат экспортирован в JSON: {full_filepath}")
+        return f"✅ Чат экспортирован в {full_filepath}"
     
     except Exception as e:
         error_msg = f"❌ Ошибка экспорта в JSON: {str(e)}"

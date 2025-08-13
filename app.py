@@ -16,6 +16,8 @@ import tempfile
 import whisper
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
+DEFAULT_EXPORT_DIR = "/app/exports"
+
 # Проверка наличия FFmpeg
 try:
     import subprocess
@@ -480,15 +482,18 @@ def export_chat_json_wrapper(export_dir=""):
     global chat_history, current_model
     try:
         # Создаем имя файла
-        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Если указана директория и она существует, сохраняем там
-        if export_dir and os.path.exists(export_dir):
-            filename = os.path.join(export_dir, f"{filename_base}.json")
-        else:
-            # Иначе сохраняем в текущую директорию
-            filename = f"{filename_base}.json"
-        
+        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json" # Добавлено .json
+
+        # Определяем целевую директорию
+        target_dir = export_dir if export_dir else DEFAULT_EXPORT_DIR
+        # Убедимся, что директория существует (внутри контейнера)
+        os.makedirs(target_dir, exist_ok=True)
+
+        filename = os.path.join(target_dir, filename_base)
+
+        # Передаем только имя файла, логика путей внутри export_handler
+        # (убедитесь, что export_handler.py не ожидает export_dir отдельно,
+        # если да, то передайте его тоже)
         result = export_chat_to_json(chat_history, current_model, filename)
         return result
     except Exception as e:
@@ -501,15 +506,16 @@ def export_chat_pdf_wrapper(export_dir=""):
     global chat_history, current_model
     try:
         # Создаем имя файла
-        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Если указана директория и она существует, сохраняем там
-        if export_dir and os.path.exists(export_dir):
-            filename = os.path.join(export_dir, f"{filename_base}.pdf")
-        else:
-            # Иначе сохраняем в текущую директорию
-            filename = f"{filename_base}.pdf"
-        
+        filename_base = f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf" # Добавлено .pdf
+
+        # Определяем целевую директорию
+        target_dir = export_dir if export_dir else DEFAULT_EXPORT_DIR
+        # Убедимся, что директория существует (внутри контейнера)
+        os.makedirs(target_dir, exist_ok=True)
+
+        filename = os.path.join(target_dir, filename_base)
+
+        # Передаем только имя файла, логика путей внутри export_handler
         result = export_chat_to_pdf(chat_history, current_model, filename)
         return result
     except Exception as e:
@@ -612,4 +618,4 @@ with gr.Blocks(title="RAG Chatbot Advanced") as demo:
         export_pdf_btn.click(export_chat_pdf_wrapper, inputs=export_dir, outputs=export_status)
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0")

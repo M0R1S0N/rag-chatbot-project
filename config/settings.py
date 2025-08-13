@@ -11,6 +11,7 @@ class Settings:
     
     # Доступные модели LLM
     AVAILABLE_MODELS = {
+        "OpenAI: GPT-4.1": "openai/gpt-4.1",
         "Claude Sonnet 4": "anthropic/claude-sonnet-4",
         "Google: Gemini 2.0 Flash": "google/gemini-2.0-flash-001",
         "Google: Gemini 2.5 Flash": "google/gemini-2.5-flash",

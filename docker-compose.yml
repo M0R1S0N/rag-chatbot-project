@@ -1,0 +1,64 @@
+# Версия указана для совместимости, предупреждение можно игнорировать или удалить
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: rag_chatbot_db
+    restart: unless-stopped
+    environment:
+      # Используем переменные из .env файла
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      # Именованный том для постоянного хранения данных PostgreSQL
+      - postgres_data:/var/lib/postgresql/data
+      # Автоматическая инициализация БД при первом запуске из вашего init.sql
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      # Маппим порт 5432 контейнера на 5433 хоста (чтобы не конфликтовать с локальным PostgreSQL)
+      - "5433:5432"
+
+  app:
+    build: .
+    container_name: rag_chatbot_app
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      # Эти переменные будут использоваться вашим приложением для подключения к БД
+      # DB_HOST ссылается на имя сервиса 'db' внутри сети Docker Compose
+      DB_HOST: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT}
+      # Передаем API ключ из .env файла хоста
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    ports:
+      # Открываем порт для Gradio UI
+      - "7860:7860"
+    volumes:
+      # Монтируем директории для сохранения данных между перезапусками
+      - ./data:/app/data
+      - ./fonts:/app/fonts
+      - ./exports:/app/exports # Монтируем локальную папку 'exports' на хосте в '/app/exports' внутри контейнера
+      # Для кэширования моделей HuggingFace (опционально, раскомментируйте при необходимости)
+      # - ~/.cache/huggingface:/root/.cache/huggingface
+    # Добавляем поддержку GPU для контейнера app (для PyTorch, Whisper)
+    # Требуется NVIDIA Container Toolkit на хосте и включенная поддержка GPU в Docker Desktop
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # Использовать все доступные GPU, можно указать конкретное число (например, 1)
+              capabilities: [gpu]
+
+# Добавлено: определение именованных томов
+volumes:
+  # Именованный том для хранения данных PostgreSQL
+  postgres_data:
+
+  
